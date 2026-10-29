@@ -12,7 +12,7 @@ Claude picks `kaggle:compute` on its own when a task is too heavy for the local 
 ## Install
 
 ```
-/plugin marketplace add Hugobsan/claude-kaggle
+/plugin marketplace add hugobsan/claude-kaggle
 /plugin install kaggle@kaggle
 ```
 
