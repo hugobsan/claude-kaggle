@@ -1,10 +1,21 @@
 {
-  "name": "kaggle",
-  "description": "Offload heavy computation (GPU, CPU, RAM) to Kaggle's free cloud machines: set up the Kaggle CLI, run parallel batch jobs as notebooks, monitor them and collect results.",
-  "version": "1.0.0",
-  "author": { "name": "Hugo Barbosa", "url": "https://hugobsan.com.br" },
+  "name": "kaggle-compute",
+  "description": "Unofficial, not affiliated with Kaggle. Offload heavy computation (GPU, CPU, RAM) to Kaggle's free cloud machines: set up the Kaggle CLI, run parallel batch jobs as notebooks, monitor them and collect results.",
+  "version": "1.1.0",
+  "author": {
+    "name": "Hugo Barbosa",
+    "url": "https://hugobsan.com.br"
+  },
   "homepage": "https://github.com/hugobsan/claude-kaggle",
   "repository": "https://github.com/hugobsan/claude-kaggle",
   "license": "MIT",
-  "keywords": ["kaggle", "gpu", "cloud", "compute", "batch", "notebook"]
+  "keywords": [
+    "kaggle",
+    "gpu",
+    "cloud",
+    "compute",
+    "batch",
+    "notebook"
+  ],
+  "displayName": "Kaggle Compute (unofficial)"
 }

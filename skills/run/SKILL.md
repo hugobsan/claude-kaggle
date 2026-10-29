@@ -1,5 +1,5 @@
 ---
-name: compute
+name: run
 description: Run heavy jobs on Kaggle's free cloud GPUs (2x T4) and CPUs instead of the local machine. Consider it at planning time, BEFORE starting work locally, whenever: the local run would take more than ~5 minutes; you are about to run a neural model (Whisper/speech-to-text, LLMs, embeddings, diffusion, OCR, training) and the machine has no NVIDIA GPU; you are about to download a large model or switch to a smaller/less accurate one just to make local CPU tolerable; or the user can't wait, wants their machine free, or mentions GPU/cloud/Kaggle. Fits any batch work: transcription, inference, audio/video/image processing, data transforms, simulations. Plans the job, runs it in parallel as a private Kaggle notebook, monitors it in the background and brings outputs back. Not for jobs that finish locally in about a minute, interactive work, or data that must not leave the machine.
 ---
 
@@ -21,14 +21,14 @@ Run this check while planning, not after a slow local run has started or the use
 Use this skill when **all** of these hold:
 - the work is heavy: GPU needed, long CPU time, or high RAM;
 - it can run unattended as a script that reads inputs and writes output files;
-- sending the inputs to Kaggle is acceptable. Notebooks are private, but the data still leaves the machine. Ask the user if the data looks sensitive.
+- sending the inputs to Kaggle is acceptable. Notebooks are private, but the data still leaves the machine: inputs, `job.py`, logs and outputs stay stored in the private notebook (and its version history) and in any dataset you create, until they are deleted. Ask the user if the data looks sensitive.
 
 Expect ~1–2 min of overhead (queueing and boot). Not worth it for jobs that finish locally in about that time.
 
 ## 0. Check the environment and the account
 
 ```bash
-kaggle config view | grep username   # owner for kernel ids; error -> run the `kaggle:setup` skill
+kaggle config view | grep username   # owner for kernel ids; error -> run the `kaggle-compute:setup` skill
 kaggle quota                         # this account's accelerator quotas
 ```
 Resources vary by account (paid tiers, verification, policy changes). **Do not trust the numbers below: check `kaggle quota` and the `RESOURCES:` line each job prints first.**
@@ -67,10 +67,20 @@ Copy `template/job.py` and `template/kernel-metadata.json` (next to this SKILL.m
 - `job.py`:
   - fill in `SETUP` (pip installs), `TASKS` (work items) and `process(item, device)`. `device` is `"cuda:N"` on GPU sessions and `"cpu"` on CPU sessions;
   - workers are started automatically: one per GPU, or one per CPU core;
-  - keep the `if __name__ == "__main__"` guard and the `spawn` context.
+  - keep the `if __name__ == "__main__"` guard and the `spawn` context;
+  - keep heavy imports (torch etc.) inside `process()`, not at the top of the file;
+  - **never put API keys or tokens in `job.py`**, `PLAN.md` or the metadata: everything pushed is stored on Kaggle. If the job needs a secret, ask the user to add it as a Kaggle Secret on the notebook and read it with `from kaggle_secrets import UserSecretsClient; UserSecretsClient().get_secret("NAME")`.
+- **The job must end on its own.** `TASKS` is finite, and when the tunnel is on, `SERVE_SECONDS` caps how long it stays up after the work. Never write an open-ended loop or a server that only stops on timeout.
 - **Inputs**:
   - small inputs: embed them in `job.py`, or download them from a URL in `SETUP`/`process` (internet is on);
-  - large inputs: create a private dataset (`kaggle datasets create`), list it in `dataset_sources`, and read it from `/kaggle/input/<slug>`. Not yet validated.
+  - local files: upload them as a **private dataset** and attach it:
+    ```bash
+    mkdir <data-dir> && cp <files> <data-dir>/      # e.g. extracted mp3s, not the full videos
+    kaggle datasets init -p <data-dir>              # edit dataset-metadata.json: "id": "<username>/<data-slug>", "title"
+    kaggle datasets create -p <data-dir> -r zip     # private by default; folders need -r zip|tar
+    kaggle datasets status <username>/<data-slug>   # wait for "ready" before pushing the job
+    ```
+    Add `"<username>/<data-slug>"` to `dataset_sources`. The files appear under `/kaggle/input/`; the job prints the paths on its `INPUT:` line, so check it before trusting a hardcoded path.
 - The tunnel is **optional and off by default** (`SERVE_SECONDS = 0`). See step 5 to choose how results come back.
 
 Syntax check: `python3 -c "import ast;ast.parse(open('job.py').read())"`.
@@ -84,6 +94,8 @@ kaggle kernels push -p . -t <seconds> --accelerator NvidiaTeslaT4  # GPU session
 ```
 **Always pass `-t`.** The CLI has no cancel command, so the timeout is the only brake.
 
+Give the user the notebook link, `https://www.kaggle.com/code/<username>/<slug>`, so they can follow the run or stop it from Kaggle's page.
+
 ## 4. Monitor in the background
 
 ```bash
@@ -94,10 +106,12 @@ Watch the log for both success and failure signals:
 ```bash
 tail -n +1 -F <job-folder>/live.log | grep -E --line-buffered "RESOURCES|INTERNET|TUNNEL_URL|RESULT|DONE|Traceback|Error|Killed|OOM"
 ```
-Wait for the final status (background loop):
+When `logs -f` exits, the script is done, but Kaggle may report `RUNNING` for a short while as it saves the outputs. Poll for a bounded time:
 ```bash
-until s=$(kaggle kernels status <username>/<slug> 2>&1); echo "$s" | grep -qiE "COMPLETE|ERROR|CANCEL"; do sleep 20; done; echo "$s"
+for i in $(seq 12); do s=$(kaggle kernels status <username>/<slug> 2>&1); echo "$s" | grep -q RUNNING || break; sleep 10; done; echo "$s"
+# expect: has status "KernelWorkerStatus.COMPLETE" (or ERROR / CANCEL...)
 ```
+If the output has no `KernelWorkerStatus`, the CLI itself failed (auth, network): fix that and retry the status, the job is not necessarily broken. To bound the wait, start the stream as `timeout <-t + 600> kaggle kernels logs -f ...`.
 The `SyntaxWarning` lines from mistune/nbconvert in the log are noise from the Kaggle image. Ignore them.
 
 ## 5. Collect results
@@ -106,12 +120,21 @@ Pick the simplest channel that works, in this order:
 
 1. **Logs**: small results (a metric, a short JSON, a status) can be printed (`print("RESULT:", ...)`) and read straight from `live.log`. Nothing else is needed.
 2. **Output download (default for files)**: `kaggle kernels output <username>/<slug> -p <job-folder>/out` downloads everything in `/kaggle/working` plus the run log once the job ends.
-3. **cloudflared tunnel (only when needed)**: use it to pull files *while* the job runs (partial or intermediate results from long jobs), or to expose a live service (e.g. a model behind an HTTP API that the agent calls repeatedly). Set `SERVE_SECONDS > 0`, or replace the static file server with your own server. After `TUNNEL_URL:` shows up in the log, run `curl -s <url>/<file>`. The tunnel lives only while the session runs, and it requires internet.
-- Check `result.json`: if `summary.failed > 0`, the per-item tracebacks are in `results[].error`.
+3. **cloudflared tunnel (only when needed)**: use it to pull files *while* the job runs (partial or intermediate results from long jobs), or to expose a live service (e.g. a model behind an HTTP API that the agent calls repeatedly). Set `SERVE_SECONDS > 0`, or replace the static file server with your own server. After `TUNNEL_URL:` shows up in the log, run `curl -s <url>/<file>`. The tunnel requires internet.
+   - **The tunnel is public**: anyone with the URL can read everything in `/kaggle/working`. Enable it only for non-sensitive outputs, and ask the user first.
+   - **Shut it down when done**: `curl -s <url>/__shutdown` ends the job right away instead of waiting out `SERVE_SECONDS`. A custom server must keep an equivalent stop route.
+- Check `result.json`: if `summary.failed > 0`, the per-item tracebacks are in `results[].error`. If `summary.crash` is set, a worker died (often out of memory); `missing` counts the items that never ran, and the finished ones are kept in `items-*.jsonl`.
 - Logs or status of a specific version: `kaggle kernels status|logs <username>/<slug>/<version>`.
+
+## 6. Shut down and clean up
+
+Once the outputs are collected:
+1. Make sure nothing is still running: the status is final, and a tunnel job got its `/__shutdown`.
+2. Offer to delete what was created, and only with the user's confirmation:
+   - the notebook: `kaggle kernels delete -y <username>/<slug>` (`-y` skips the interactive prompt);
+   - any input dataset: `kaggle datasets delete -y <username>/<data-slug>`.
 
 ## Known pitfalls
 
 - Missing `__main__` guard with `spawn`: every worker re-runs the script. The job dies with `BrokenProcessPool` and status ERROR after ~17 s.
 - Unknown: whether pushing a new version cancels a running one. Wait for the final status, or use different slugs for parallel jobs.
-- Test notebooks pile up in the account. Offer to delete them with `kaggle kernels delete -y <username>/<slug>` (`-y` skips the interactive prompt), and only with the user's confirmation.

@@ -1,6 +1,6 @@
 ---
 name: setup
-description: Prepare the local machine to offload computation to Kaggle's free cloud machines (Kaggle CLI + authentication). Use before the `kaggle:compute` skill when `kaggle` is not installed, when Kaggle commands fail with "Authentication required", or when the user asks to set up or connect Kaggle. Asks the user before installing anything.
+description: Prepare the local machine to offload computation to Kaggle's free cloud machines (Kaggle CLI + authentication). Use before the `kaggle-compute:run` skill when `kaggle` is not installed, when Kaggle commands fail with "Authentication required", or when the user asks to set up or connect Kaggle. Asks the user before installing anything.
 ---
 
 # Kaggle setup
@@ -55,4 +55,4 @@ kaggle quota          # accelerator quotas for THIS account (paid or verified ti
 
 Notebook internet (needed for pip installs, downloads and tunnels) requires a phone-verified account: kaggle.com → Settings → Account → Phone verification. A job that prints `INTERNET: False` means this step is missing.
 
-Done. Continue with the **`kaggle:compute`** skill.
+Done. Continue with the **`kaggle-compute:run`** skill.
