@@ -1,0 +1,14 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "kaggle",
+  "description": "Offload heavy computation to Kaggle's free GPU/CPU machines from Claude Code.",
+  "owner": { "name": "Hugo Barbosa", "url": "https://hugobsan.com.br" },
+  "plugins": [
+    {
+      "name": "kaggle",
+      "description": "Offload heavy computation (GPU, CPU, RAM) to Kaggle's free cloud machines and bring the results back.",
+      "source": "./",
+      "category": "productivity"
+    }
+  ]
+}
