@@ -105,4 +105,4 @@ Pick the simplest channel that works, in this order:
 
 - Missing `__main__` guard with `spawn`: every worker re-runs the script. The job dies with `BrokenProcessPool` and status ERROR after ~17 s.
 - Unknown: whether pushing a new version cancels a running one. Wait for the final status, or use different slugs for parallel jobs.
-- Test notebooks pile up in the account. Offer to delete them with `kaggle kernels delete <username>/<slug>`, and only with the user's confirmation.
+- Test notebooks pile up in the account. Offer to delete them with `kaggle kernels delete -y <username>/<slug>` (`-y` skips the interactive prompt), and only with the user's confirmation.
