@@ -1,11 +1,20 @@
 ---
 name: compute
-description: Offload heavy computation to Kaggle's free cloud machines (GPU, CPU and RAM) and bring the results back. Use whenever a task is computationally expensive for the local machine — needs a GPU the machine lacks, would take many minutes/hours of local CPU, needs more RAM than is available, or would block the user's machine — and the work can run as a batch script with inputs that can be uploaded or downloaded. Typical fits: ML inference or training, transcription, embeddings, image/audio/video processing, large data transforms, simulations, brute-force searches, any embarrassingly parallel batch. Also use when the user asks to "run this on Kaggle", "use a free GPU", "run it in the cloud", or "don't run this locally". The skill writes a processing plan, builds a parallel job (one worker per GPU or per CPU core), pushes it as a Kaggle notebook, monitors it in the background, and collects outputs (download, or live via a cloudflared tunnel started inside the notebook). Not for interactive/low-latency work, tasks that finish locally in about a minute, or data that must not leave the user's machine.
+description: Run heavy jobs on Kaggle's free cloud GPUs (2x T4) and CPUs instead of the local machine. Consider it at planning time, BEFORE starting work locally, whenever: the local run would take more than ~5 minutes; you are about to run a neural model (Whisper/speech-to-text, LLMs, embeddings, diffusion, OCR, training) and the machine has no NVIDIA GPU; you are about to download a large model or switch to a smaller/less accurate one just to make local CPU tolerable; or the user can't wait, wants their machine free, or mentions GPU/cloud/Kaggle. Fits any batch work: transcription, inference, audio/video/image processing, data transforms, simulations. Plans the job, runs it in parallel as a private Kaggle notebook, monitors it in the background and brings outputs back. Not for jobs that finish locally in about a minute, interactive work, or data that must not leave the machine.
 ---
 
 # Run heavy computation on Kaggle
 
 Validated end to end on 2026-10-29 (Kaggle CLI 2.2.5).
+
+## Decide early: before starting any heavy work locally
+
+Run this check while planning, not after a slow local run has started or the user has complained:
+
+1. **Estimate the local run time.** Data size × per-item speed. Check for a GPU with `nvidia-smi`. Neural models on CPU are typically 10–50× slower than on a T4.
+2. **Estimate the Kaggle run time.** ~2 min of overhead + upload time + GPU/CPU compute.
+3. If the local run takes more than ~5 min, or would block the user's machine, **offer Kaggle first** and show both estimates in one line. Example: "locally ~30 min on CPU; on Kaggle ~5 min with the large model".
+4. **Do not lower quality to make local runs bearable** (smaller model, fewer passes) when Kaggle can run the best option fast. Don't download big models locally just to run them on CPU.
 
 ## When this beats running locally
 
